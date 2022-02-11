@@ -1,0 +1,664 @@
+---
+title: "Analysis of World Happiness"
+subtitle: "CS 544 Term Project"
+author: "Mohammed Alshaalan, Vineet Verma, Melissa Viator"
+date: "December 7, 2021"
+navbar:
+  title: "World Happiness Report"
+  left:
+   text: "Home"
+   href: CS544-Term-Project.html
+output:
+  html_document:
+    fig_width: 8
+    code_folding: hide
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: true
+---
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+# Introduction
+
+## Dataset Overview
+The world happiness report dataset was developed from the Gallup World Poll in which the institution gathered information on a country’s ladder score as well as other potential explanatory factors of a country’s happiness. The report continues to be utilized “as governments, organizations, and civil society increasingly use happiness indicators to inform their policy-making decisions.”
+
+Source: https://www.kaggle.com/ajaypalsinghlo/world-happiness-report-2021
+
+### Prepare the Dataset
+
+The table below displays the first few rows of the world happiness dataset. Note that there is a separate dataset specifically for 2021 data.
+
+```{r echo = TRUE}
+#Libraries
+library(countrycode)
+library(plotly)
+library(dplyr)
+library(plyr)
+library(ggcorrplot)
+library(reshape2)
+library(tidyverse)
+library(tidymodels)
+library(kernlab)
+library(pracma)
+library(knitr)
+library(sampling)
+library(prob)
+
+wd <- getwd()
+setwd(wd)
+
+happy <- read.csv("data/world-happiness-report.csv")
+colnames(happy) <- c("Country","Year", "Ladder.Score", "GDP", "Social.Support", "Life.Expect", "Freedom", "Generosity", "Corruption", "Pos.Affect", "Neg.Affect")
+
+happy.21 <- read.csv("data/world-happiness-report-2021.csv")
+happy.21 <- happy.21[,c(1:3, 7:12)]
+colnames(happy.21) <- c("Country","Region", "Ladder.Score", "GDP", "Social.Support", "Life.Expect", "Freedom", "Generosity", "Corruption")
+
+happy <- merge(happy, happy.21[, c("Country","Region")], by="Country")
+happy <- na.omit(happy)
+
+kable(head(happy))
+
+```
+
+
+### Explore the Dataset
+The dataset includes 166 countries that participated in the world happiness survey. While not every country participated in all years, the dataset includes information from as early as 2005 through 2021. 
+
+
+Below, are summarized details of certain variables of interest:
+
+-	Ladder Score: Measurement of happiness from a scale of 0 to 10; 10 represents “the best possible life for you” and 0 represents “the worst possible life for you”.
+
+Factors:
+
+-	GDP per capita: Gross domestic product (GDP) measures a country's economic output per person or simply their wealth.
+
+-	Social Support: National average of the binary responses (either 0 or 1) to the following question: “If you were in trouble, do you have relatives or friends you can count on to help you whenever you need them, or not?”
+
+-	Healthy life expectancy at birth: Average number of years that a person can expect to live in "full health".
+
+-	Freedom to make life choices: National average of responses to the following question: “Are you satisfied or dissatisfied with your freedom to choose what you do with your life?”
+
+-	Generosity: The residual of regressing national average of response to the following question: “Have you donated money to a charity in the past month?”
+
+-	Corruption: The measure is the national average of the survey responses to the following two questions: “Is corruption widespread throughout the government or not” and “Is corruption widespread within businesses or not?”
+
+Source: https://happiness-report.s3.amazonaws.com/2021/Appendix1WHR2021C2.pdf
+
+
+Assumption: The factors measured in the dataset are on the same scale for each country. While an individual’s version of happiness in country A might differ from country B, we are assuming that the variables measure the same version among different countries.
+
+## Objective
+The objective of this project is to analyze countries' happiness levels and the potential factors that influence happiness.
+
+Specifically, we wish to answer the following questions:
+
+- Regions: Which regions are included in our dataset and how many countries belong to each region?
+
+- Ladder Score: What countries had the lowest and highest improvement in ladder score over the years? How has a country’s happiness evolved over time?
+
+-	Correlation: What is the correlation among factors? How does the correlation evolve over time and what is its impact on ladder score?
+
+-	Regression Model: What would a model to predict ladder score look like? Which factors are most important in predicting ladder score?
+
+- Top Countries: On average, which countries are the happiest? Do the same top countries repeat in other factors?
+
+-	Central Limit Theorem: What is the distribution of ladder score and what are the results of applying the central limit theorem to the ladder score variable?
+
+- Sampling Methods: How can we accurately run our analysis on a subset of the dataset while maintaining relevant results? What is the best sampling method that will help archive this target?
+
+# Analysis
+The map below summarizes how the happiness levels for each country have evolved over the past fifteen years.
+
+Notice how the map visualizes the ladder score of each country year by year. Such visualization is useful in setting the ground work for our analysis by helping us understand the happiness levels of each country and how the happiness levels have changed over time.
+
+
+``` {r}
+
+happy$Country_Code <- countrycode(happy$Country, origin='country.name', destination = 'genc3c')
+fig <- plot_ly(happy, type='choropleth',locations=~Country_Code, z=~happy$Ladder.Score, text=~Country, colorscale='Viridis', frame = ~Year)
+
+fig <- fig %>% colorbar(title = "Ladder Score")
+fig <- fig %>% layout(
+    title = "Ladder Score by Country"
+)
+fig
+
+```
+
+## Regions
+The pie chart below shows the percent of countries allocated to each region in the dataset.
+
+``` {r}
+regions <- unique(happy.21$Region)
+counts <- c()
+for (region in regions) {
+    counts <- c(counts, sum(happy.21$Region==region))
+    }
+data <- data.frame(regions, counts)
+data <- data[order(counts),]
+  
+colors <- c("#440154FF", "#482878FF", "#3E4A89FF", "#31688EFF", "#26828EFF", "#35B779FF", "#1F9E89FF", "#6DCD59FF", "#B4D32CFF", "#FDE725FF")
+
+fig <- plot_ly(data, labels = ~regions, values = ~counts, type = 'pie', textposition = 'inside', textinfo = 'percent', insidetextfont = list(color = '#FFFFFF'), hoverinfo = 'text', text = ~paste(regions, ':', counts, "countries"), marker = list(colors = colors, line = list(color = '#FFFFFF', width = 1)), opacity = .75)
+
+fig <- fig %>% layout(title = 'Regions Included in the Dataset', xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE), yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+  
+fig
+ 
+```
+Findings: From the pie chart, it is clear that the majority of countries are from three regions: Sub-Sharan African, Western Europe, and Latin America and Caribbean.
+This is important to be aware of as we analyze numeric variables by region.
+
+## Ladder Score
+
+### Changes in Ladder Score Over Time
+The following plot visualizes changes in ladder score from 2005 through 2020, grouped by region. For comparison, the average ladder score of all regions is mapped on the plot.
+``` {r echo = TRUE}
+#df subset columns & group
+ladder.score <- happy[, c(2, 3, 12)]
+ladder.score <- ladder.score %>% group_by(Region,Year)  %>% dplyr::summarise(Ladder.Score = mean(Ladder.Score))
+
+#Average
+mean.ladder.score <- happy %>% group_by(Year)  %>% dplyr::summarise(Ladder.Score = mean(Ladder.Score))
+  
+#Regions
+CE.Europe <- ladder.score[ladder.score$Region == "Central and Eastern Europe",]
+Indep <- ladder.score[ladder.score$Region == "Commonwealth of Independent States",]
+E.Asia <- ladder.score[ladder.score$Region == "East Asia",]
+LA <- ladder.score[ladder.score$Region == "Latin America and Caribbean",]
+ME <- ladder.score[ladder.score$Region == "Middle East and North Africa",]
+NAmer <- ladder.score[ladder.score$Region == "North America and ANZ",]
+S.Asia <- ladder.score[ladder.score$Region == "South Asia",]
+SE.Asia <- ladder.score[ladder.score$Region == "Southeast Asia",]
+Africa <- ladder.score[ladder.score$Region == "Sub-Saharan Africa",]
+W.Europe <- ladder.score[ladder.score$Region == "Western Europe",]
+
+
+fig <- plot_ly(ladder.score, type = 'scatter', mode = 'lines+markers') %>%
+  layout(title = "Changes in Ladder Score Over Time", xaxis = list(title = 'Year'), yaxis = list(title = 'Ladder Score'), legend = list(orientation = 'h', y=-.2)) %>%
+
+  add_trace(x = CE.Europe$Year, y = CE.Europe$Ladder.Score, name = "Central and Eastern Europe", line=list(color="#440154FF"), marker = list(color = "#440154FF")) %>%
+  add_trace(x = Indep$Year, y = Indep$Ladder.Score, name = "Commonwealth of Independent States", line=list(color="#482878FF"), marker = list(color = "#482878FF")) %>%
+  add_trace(x = E.Asia$Year, y = E.Asia$Ladder.Score, name = "East Asia", line=list(color="#3E4A89FF"), marker = list(color = "#3E4A89FF")) %>%
+  add_trace(x = LA$Year, y = LA$Ladder.Score, name = "Latin America and Caribbean", line=list(color="#31688EFF"), marker = list(color = "#31688EFF")) %>%
+  add_trace(x = ME$Year, y = ME$Ladder.Score, name = "Middle East and North Africa", line=list(color="#26828EFF"), marker = list(color = "#26828EFF")) %>%
+  add_trace(x = NAmer$Year, y = NAmer$Ladder.Score, name = "North America and ANZ", line=list(color="#1F9E89FF"), marker = list(color = "#1F9E89FF")) %>%
+  add_trace(x = S.Asia$Year, y = S.Asia$Ladder.Score, name = "South Asia", line=list(color="#35B779FF"), marker = list(color = "#35B779FF")) %>%
+  add_trace(x = SE.Asia$Year, y = S.Asia$Ladder.Score, name = "Southeast Asia", line=list(color="#6DCD59FF"), marker = list(color = "#6DCD59FF")) %>%
+  add_trace(x = Africa$Year, y = Africa$Ladder.Score, name = "Sub-Saharan Africa", line=list(color="#B4D32CFF"), marker = list(color = "#B4D32CFF")) %>%
+  add_trace(x = W.Europe$Year, y = W.Europe$Ladder.Score, name = "Western Europe", line=list(color="#FDE725FF"), marker = list(color = "#FDE725FF")) %>%
+
+  add_trace(x = mean.ladder.score$Year, y = mean.ladder.score$Ladder.Score, name = "Average", line=list(color="red", dash = "dash"), marker = list(color = "red"))
+
+fig
+```
+Findings:
+
+- On average, the least happy year was 2006, with a general upward trend each following year.
+
+- For all years, the North America and ANZ region has the highest ladder score.
+
+- For all years, the Sub-Saharan Africa and Southeast Asia regions have the lowest ladder score.
+
+
+- While each region has experienced inclines and declines over the fifteen years, the majority of region's ladder score has increased from the start to the end of the time period.
+
+### Ladder Score Distribution by Region
+The following graphs examine the distribution of ladder score grouped by region.
+
+``` {r echo = TRUE}
+fig <- plot_ly(happy, x = ~Region, y = ~Ladder.Score, type = 'box', color=~Region, colors = "viridis") %>% 
+        layout(title = "Ladder Score by Region Boxplots",xaxis= list(showticklabels = FALSE), yaxis = list(title = 'Ladder Score'))
+
+fig
+```
+
+``` {r}
+g1 <- happy[which(happy$Region == 'Central and Eastern Europe'),]
+d1 <- density(g1$Ladder.Score)
+
+g2 <- happy[which(happy$Region == 'Commonwealth of Independent States'),]
+d2 <- density(g2$Ladder.Score)
+
+g3 <- happy[which(happy$Region == 'East Asia'),]
+d3 <- density(g3$Ladder.Score)
+
+g4 <- happy[which(happy$Region == 'Latin America and Caribbean'),]
+d4 <- density(g4$Ladder.Score)
+
+g5 <- happy[which(happy$Region == 'Middle East and North Africa'),]
+d5 <- density(g5$Ladder.Score)
+
+g6 <- happy[which(happy$Region == 'North America and ANZ'),]
+d6 <- density(g6$Ladder.Score)
+
+g7 <- happy[which(happy$Region == 'South Asia'),]
+d7 <- density(g7$Ladder.Score)
+
+g8 <- happy[which(happy$Region == 'Southeast Asia'),]
+d8 <- density(g8$Ladder.Score)
+
+g9 <- happy[which(happy$Region == 'Sub-Saharan Africa'),]
+d9 <- density(g9$Ladder.Score)
+
+g10 <- happy[which(happy$Region == 'Western Europe'),]
+d10 <- density(g10$Ladder.Score)
+
+fig <- plot_ly(x = ~d1$x, y = ~d1$y, type = 'scatter', mode = 'lines', name = 'Central and Eastern Europe', fill = 'tozeroy', fillcolor='#440154CC', line=list( color='#440154CC'))
+
+fig <- fig %>% add_trace(x = ~d2$x, y = ~d2$y, name = 'Commonwealth of Independent States', fill = 'tozeroy', fillcolor='#482878CC', line=list( color='#482878CC'))
+
+fig <- fig %>% add_trace(x = ~d3$x, y = ~d3$y, name = 'East Asia',fill = 'tozeroy', fillcolor='#3E4A89CC', line=list(color='#3E4A89CC'))
+
+fig <- fig %>% add_trace(x = ~d4$x, y = ~d4$y, name = 'Latin America and Caribbean', fill = 'tozeroy', fillcolor='#31688ECC',line=list( color='#31688ECC'))
+
+fig <- fig %>% add_trace(x = ~d5$x, y = ~d5$y, name = 'Middle East and North Africa', fill = 'tozeroy', fillcolor='#26828ECC', line=list(color='#26828ECC'))
+
+fig <- fig %>% add_trace(x = ~d6$x, y = ~d6$y, name = 'North America and ANZ', fill = 'tozeroy', fillcolor='#1F9E89CC', line=list(color='#1F9E89CC'))
+
+fig <- fig %>% add_trace(x = ~d7$x, y = ~d7$y, name = 'South Asia', 
+  fill = 'tozeroy', fillcolor='#35B779CC', line=list(color='#35B779CC'))
+
+fig <- fig %>% add_trace(x = ~d8$x, y = ~d8$y, name = 'Southeast Asia', fill = 'tozeroy', fillcolor='#6DCD59CC', line=list(color='#6DCD59CC'))
+
+fig <- fig %>% add_trace(x = ~d9$x, y = ~d9$y, name = 'Sub-Saharan Africa', fill = 'tozeroy', fillcolor='#B4D32CCC', line=list( color='#B4D32CCC'))
+
+fig <- fig %>% add_trace(x = ~d10$x, y = ~d10$y, name = 'Western Europe', fill = 'tozeroy', fillcolor='#FDE725CC', line=list( color='#FDE725CC'))
+
+fig <- fig %>% layout(title = "Ladder Score by Region Density Graph", xaxis = list(title = 'Ladder Score'), yaxis = list(title = 'Density'))
+
+fig
+
+```
+Findings:
+
+- Regions with a higher ladder score, such as North America and ANZ, have a more narrow and sharp distribution, meaning that the range of ladder score observations is small.
+
+- The Middle East and North Africa region has the largest spread, meaning that the range of ladder score observations is large.
+
+- Region distributions that include outliers mean the ladder score of that particular country is significantly different than the remaining observations.
+
+
+## Correlation
+
+### Correlation Matrix
+The following plot visualizes the relationships between the factors included in the world happiness dataset. Factors with a high positive correlation appear blue while factors with a high negative correlation appear yellow.
+
+```{r echo = TRUE}
+
+factors <- happy[,4:9]
+factors <- na.omit(factors) 
+
+corr <- cor(factors)
+p.mat <- cor_pmat(factors)
+corr.plot <- ggcorrplot(corr, hc.order = TRUE, type = "lower", outline.col = "white", p.mat = p.mat, colors = c("#FDE725FF", "#6DCD59FF", "#26828EFF")
+  )
+ggplotly(corr.plot)
+
+```
+### GDP per Capita vs Life Expectancy 
+From the correlation matrix above, we found a high positive correlation of 0.86 between logged GDP per capita and life expectancy. 
+The scatter plot below further investigates the relationship between GDP and life expectancy by year and the effect the factors have on ladder score. 
+Notice that as GDP and life expectancy increase, the ladder score also increases.
+
+``` {r echo = TRUE}
+fig <- happy %>%
+  plot_ly(x = ~GDP, y = ~Life.Expect, size = ~Ladder.Score, color = ~Ladder.Score, frame = ~Year, type = 'scatter', mode = 'markers') %>% 
+  layout(title = "Logged GDP per Capita vs Life Expectancy", xaxis = list(title = 'GDP per Capita'), yaxis = list(title = 'Life Expectancy'))
+
+fig
+
+```
+
+### Freedom vs Corruption
+From the correlation matrix above, we found a moderate negative correlation of -0.49 between freedom to make life choices and perception of corruption.
+The scatter plot below further investigates the relationship between freedom and corruption by year and the effect the factors have on ladder score. 
+Notices that as freedom increases and corruption decreases, the ladder score increases.
+
+``` {r echo = TRUE}
+fig <- happy %>%
+  plot_ly(x = ~Freedom, y = ~Corruption, size = ~Ladder.Score, color = ~Ladder.Score, frame = ~Year, type = 'scatter', mode = 'markers') %>% 
+  layout(title = "Freedom vs Perception of Corruption", xaxis = list(title = 'Freedom'), yaxis = list(title = 'Corruption'))
+
+fig
+
+```
+## Regression Model
+
+### Multivariate Regression Model
+
+```{r echo = TRUE}
+
+model <- lm(Ladder.Score ~ GDP + Social.Support + Life.Expect + Freedom + Generosity + Corruption, data=happy)
+coef <- summary(model)$coefficients[,1]
+
+```
+
+Is there a model to predict a country's ladder score?  
+Based on the following factors:
+
+- GDP
+- Social Support
+- Life Expectancy 
+- Freedom
+- Generosity
+- Corruption
+
+A multivariate regression model can be utilized to predict a country's ladder score.  
+The following model uses all six factors to minimize the residual when predicting Ladder Score:
+
+Ladder Score = -1.93 + 0.36 * (GDP) + 2.31 * (Social Support) + 0.03 * (Life Expectancy) + 1.06 * (Freedom) + 0.70 * (Generosity) - 0.65 * (Corruption)
+
+### Coefficient of Determination
+Note the complexity of the multivariate regression model above. We are interested in discovering which factors are most useful in predicting the ladder score. The coefficient of determination (r-squared) is used to analyze what percentage of the variation in y is explained by x.  
+The following bar chart examines the coefficient of determination for each of our factors.
+
+```{r echo = TRUE}
+variables <- colnames(factors)
+r.sqr <- c()
+
+model <- lm(Ladder.Score~GDP, data=happy)
+r.sqr <- c(r.sqr, summary(model)$r.squared)
+
+model <- lm(Ladder.Score~Social.Support, data=happy)
+r.sqr <- c(r.sqr, summary(model)$r.squared)
+
+model <- lm(Ladder.Score~Life.Expect, data=happy)
+r.sqr <- c(r.sqr, summary(model)$r.squared)
+
+model <- lm(Ladder.Score~Freedom, data=happy)
+r.sqr <- c(r.sqr, summary(model)$r.squared)
+
+model <- lm(Ladder.Score~Generosity, data=happy)
+r.sqr <- c(r.sqr, summary(model)$r.squared)
+
+model <- lm(Ladder.Score~Corruption, data=happy)
+r.sqr <- c(r.sqr, summary(model)$r.squared)
+
+r.sqr.df <- data.frame(variables, r.sqr)
+r.sqr.df$variables <- factor(r.sqr.df$variables, levels = r.sqr.df[order(r.sqr, decreasing = TRUE),]$variables, ordered = TRUE)
+order.index <- order(r.sqr.df$variables, decreasing = TRUE)
+r.sqr.df <- r.sqr.df[order.index, ]
+
+fig <- plot_ly(r.sqr.df, x = r.sqr.df$variables, y = r.sqr.df$r.sqr, type = "bar", color = ~variables, colors = c("#440154FF", "#3E4A89FF", "#26828EFF", "#35B779FF", "#B4D32CFF", "#FDE725FF"), opacity = .75) %>%
+  layout(title = "Coefficient of Determination for Ladder Score", xaxis = list(title = 'Factors'), yaxis = list(title = 'R Squared'), showlegend = FALSE)
+
+fig
+
+```
+Findings:  
+Logged GDP per capita and life expectancy have the highest coefficients of determination where 62.4% and 55.4% of the variation in ladder score can be explained by GDP and life expectancy, respectively.  
+Generosity has the lowest coefficient of determination where only 3.6% of the variation in ladder score can be explained by generosity.
+
+### 3D Regression Surface
+Since logged GDP per capita and life expectancy had the highest coefficients of determination, the following regression model only uses GDP and life expectancy to predict ladder score. The 3D regression surface is produced below:
+
+``` {r echo = TRUE}
+mesh_size <- .02
+margin <- 0
+X <- happy %>% select(GDP, Life.Expect)
+y <- happy %>% select(Ladder.Score)
+
+model <- svm_rbf(cost = 1.0) %>% 
+  set_engine("kernlab") %>% 
+  set_mode("regression") %>% 
+  fit(Ladder.Score ~ GDP + Life.Expect, data = happy)
+
+x_min <- min(X$GDP, na.rm=T) - margin
+x_max <- max(X$GDP, na.rm=T) - margin
+y_min <- min(X$Life.Expect, na.rm=T) - margin
+y_max <- max(X$Life.Expect, na.rm=T) - margin
+xrange <- seq(x_min, x_max, mesh_size)
+yrange <- seq(y_min, y_max, mesh_size)
+xy <- meshgrid(x = xrange, y = yrange)
+xx <- xy$X
+yy <- xy$Y
+dim_val <- dim(xx)
+xx1 <- matrix(xx, length(xx), 1)
+yy1 <- matrix(yy, length(yy), 1)
+final <- cbind(xx1, yy1)
+pred <- model %>%
+  predict(final)
+
+pred <- pred$.pred
+pred <- matrix(pred, dim_val[1], dim_val[2])
+
+fig <- plot_ly(happy, x = ~GDP, y = ~Life.Expect, z = ~Ladder.Score ) %>% 
+  add_markers(size = 5) %>% 
+  add_surface(x=xrange, y=yrange, z=pred, alpha = 0.65, type = 'mesh3d', name = 'pred_surface')
+fig
+
+```
+Findings: The graph above visualizes the predictive model versus the actual values. Notice that ladder score increases as GDP and life expectancy increase.
+
+## Top Countries
+
+### Which Countries are the Happiest?
+The following bar chart displays the top 10 happiest countries, on average.
+``` {r echo = TRUE}
+happy.avg <- aggregate(happy[, 3:11], list(happy$Country), mean)
+colors <- c("#440154FF", "#482878FF", "#3E4A89FF", "#31688EFF", "#26828EFF", "#1F9E89FF", "#35B779FF", "#6DCD59FF", "#B4D32CFF", "#FDE725FF")
+
+top.ls <- happy.avg[order(happy.avg$Ladder.Score, decreasing = TRUE),][1:10, 1:2]
+top.ls$Group.1 <- factor(top.ls$Group.1, levels = top.ls[order(top.ls$Ladder.Score, decreasing = FALSE),]$Group.1, ordered = TRUE)
+order.index <- order(top.ls$Group.1, decreasing = TRUE)
+top.ls <- top.ls[order.index, ]
+
+fig1 <- plot_ly(top.ls, x = top.ls$Ladder.Score, y = top.ls$Group.1, type = "bar", orientation = "h", color = ~Group.1, colors = colors, opacity = .75, width=600, height=300) %>%
+  
+  layout(title = "Top 10 Happiest Countries", xaxis = list(title = 'Average Ladder Score', range=c(7,7.75)), yaxis = list(title = 'Countries'), showlegend = FALSE)
+
+fig1
+
+```
+### Which Countries have the Highest Life Expectancy?
+The following bar chart displays the top 10 countries with the highest life expectancy, on average.
+
+Notice that multiple countries have repeated from the top 10 happiest countries, including Switzerland, Iceland, Australia, and Canada. This repetition is expected as the life expectancy factor had a high correlation coefficient for explaining ladder score. 
+``` {r echo = TRUE}
+top.le <- happy.avg[order(happy.avg$Life.Expect, decreasing = TRUE),][1:10, c(1:7)]
+top.le$Group.1 <- factor(top.le$Group.1, levels = top.le[order(top.le$Life.Expect, decreasing = FALSE),]$Group.1, ordered = TRUE)
+order.index <- order(top.le$Group.1, decreasing = TRUE)
+top.le <- top.le[order.index, ]
+
+fig2 <- plot_ly(top.le, x = top.le$Life.Expect, y = top.le$Group.1, type = "bar", orientation = "h", color = ~Group.1, colors = colors, opacity = .75, width=600, height=300) %>%
+  
+  layout(title = "Top 10 Countries with the Highest Life Expectancy", xaxis = list(title = 'Average Life Expectancy', range=c(70,75)), yaxis = list(title = 'Countries'), showlegend = FALSE)
+
+fig2
+```
+
+### Which Countries are the Most Generous?
+The following bar chart displays the top 10 most generous countries, on average.
+
+Notice that only two countries have repeated from the top 10 happiest countries - Netherlands and Australia. The lack of repetition is expected as the generosity factor had a low correlation coefficient for explaining ladder score.
+``` {r echo = TRUE}
+top.g <- happy.avg[order(happy.avg$Generosity, decreasing = TRUE),][1:10, c(1:7)]
+top.g$Group.1 <- factor(top.g$Group.1, levels = top.g[order(top.g$Generosity, decreasing = FALSE),]$Group.1, ordered = TRUE)
+order.index <- order(top.g$Group.1, decreasing = TRUE)
+top.g <- top.g[order.index, ]
+
+fig3 <- plot_ly(top.g, x = top.g$Generosity, y = top.g$Group.1, type = "bar", orientation = "h", color = ~Group.1, colors = colors, opacity = .75, width=600, height=300) %>%
+  
+  layout(title = "Top 10 Most Generous Countries", xaxis = list(title = 'Average Generosity'), yaxis = list(title = 'Countries'), showlegend = FALSE)
+
+fig3
+```
+
+## Central Limit Theorem
+
+### Ladder Score Distribution
+The following plot visualizes the distribution of 2021 ladder scores. The distribution appears to follow an approximately normal shape where the mean (5.5328) ladder score approximates the median (5.5340) ladder score.
+```{r echo = TRUE}
+
+mean = mean(happy.21$Ladder.Score)
+sd <- sd(happy.21$Ladder.Score)
+median = median(happy.21$Ladder.Score)
+
+density <- density(happy.21$Ladder.Score)
+
+fig <- plot_ly(x = ~density$x, y = ~density$y, type = 'scatter', mode = 'lines', fill = 'tozeroy', name = "Population Distribution") %>%
+  layout(title = "2021 Ladder Score Distribution", xaxis = list(title = 'Ladder Score'), yaxis = list(title = 'Density'), showlegend = FALSE) %>%
+  add_segments(x = mean, xend = mean, y = 0, yend = max(density$y), line = list(color = 'black', dash = 'dot'), name = "Population Mean")
+
+fig
+
+```
+### Central Limit Theorem Samples
+The Central Limit Theorem is the theory that the sampling distribution of the sample means approaches a normal distribution as the sample size increases.
+We utilized 2021 ladder scores to test the Central Limit Theorem. The histograms below visualize the results from samples means of 1000 random samples of sample sizes 10, 20, 30, and 40. 
+
+```{r echo = TRUE}
+
+samples <- 1000
+xbar <- numeric(samples)
+
+size <- 10
+for (i in 1:samples) {
+  xbar[i] <- mean(sample(happy.21$Ladder.Score, size = size))}
+density <- density(xbar)
+fig1 <- plot_ly(x = ~density$x, y = ~density$y, type = 'scatter', mode = 'lines', color = I("#440154FF"), fill = 'tozeroy', name = "Sample Size = 10")
+mean.10 <- mean(xbar)
+sd.10 <- sd(xbar)
+
+size <- 20
+for (i in 1:samples) {
+  xbar[i] <- mean(sample(happy.21$Ladder.Score, size = size))}
+density <- density(xbar)
+fig2 <- plot_ly(x = ~density$x, y = ~density$y, type = 'scatter', mode = 'lines', color = I("#482878FF"), fill = 'tozeroy', name = "Sample Size = 20")
+mean.20 <- mean(xbar)
+sd.20 <- sd(xbar)
+
+size <- 30
+for (i in 1:samples) {
+  xbar[i] <- mean(sample(happy.21$Ladder.Score, size = size))}
+density <- density(xbar)
+fig3 <- plot_ly(x = ~density$x, y = ~density$y, type = 'scatter', mode = 'lines', color = I("#3E4A89FF"), fill = 'tozeroy', name = "Sample Size = 30")
+mean.30 <- mean(xbar)
+sd.30 <- sd(xbar)
+
+size <- 40
+for (i in 1:samples) {
+  xbar[i] <- mean(sample(happy.21$Ladder.Score, size = size))}
+density <- density(xbar)
+fig4 <- plot_ly(x = ~density$x, y = ~density$y, type = 'scatter', mode = 'lines', color = I("#31688EFF"), fill = 'tozeroy', name = "Sample Size = 40")
+mean.40 <- mean(xbar)
+sd.40 <- sd(xbar)
+
+fig <- subplot(fig1, fig2, fig3, fig4, nrows = 2, margin = 0.05) %>%
+  layout(title = "Central Limit Theorem of 2021 Ladder Scores")
+
+```
+
+```{r echo = TRUE}
+cat("Population: Mean = ", round(mean,4)," SD = ",round(sd,4))
+cat("\nSample Size = 10: Mean = ", round(mean.10,4)," SD = ",round(sd.10,4),
+    "\nSample Size = 20: Mean = ", round(mean.20,4)," SD = ",round(sd.20,4),
+    "\nSample Size = 30: Mean = ", round(mean.30,4)," SD = ",round(sd.30,4),
+    "\nSample Size = 40: Mean = ", round(mean.40,4)," SD = ",round(sd.40,4))
+
+```
+
+``` {r echo = TRUE}
+
+fig
+
+```
+
+Findings: 
+
+- The histograms derived from the sample means appear to follow a normal distribution.
+
+- Notice that as the sample size increases, the standard deviation decreases and the distribution becomes more narrow.
+
+## Sampling Methods
+We want to further explore data sampling on our dataset and what is the best describing sampling method. While the number of data point is not and will never be huge, given the data collection is done per country per year, it is shown for demonstration purposes.
+
+Sampling methods:
+1. Simple Random Sampling Without Replacement: SRSWOR
+2. Systematic Sampling
+3. Unequal Probabilities, variable to sample: Countries Count.
+
+We will go with sample size 100.
+
+``` {r echo = TRUE}
+set.seed(122345)
+sample.size = 100
+GDP = as.numeric(unlist(happy[,'GDP']))
+
+#SRSWOR
+s.srswor = srswor(sample.size, NROW(GDP))
+s.srswor.sample = happy[s.srswor != 0,]
+
+#Systematic
+N <- length(GDP)
+k <- ceiling(N / sample.size)
+r <- sample(k, 1)
+sys.s <- seq(r, by = k, length = sample.size)
+sys.sample <- happy[sys.s,]
+
+#Unequal probabilities
+happy = happy %>% group_by(Region) %>% dplyr::mutate(count_countries=n())
+s.uneq.pik <- inclusionprobabilities(happy$count_countries,sample.size)
+s.uneq.s <- UPsystematic(s.uneq.pik)
+s.uneq.sample <-  happy[s.uneq.s != 0,]
+
+#region names to first letters
+sys.sample$Region =  gsub('\\b(\\pL)\\pL{2,}|.','\\U\\1',sys.sample$Region,perl = TRUE)
+s.uneq.sample$Region =  gsub('\\b(\\pL)\\pL{2,}|.','\\U\\1',s.uneq.sample$Region,perl = TRUE)
+s.srswor.sample$Region = gsub('\\b(\\pL)\\pL{2,}|.','\\U\\1',s.srswor.sample$Region,perl = TRUE)
+
+#probability table 
+pop.prop.t = prop.table(table(gsub('\\b(\\pL)\\pL{2,}|.','\\U\\1',happy$Region,perl = TRUE)))
+s.sys.prop.t =prop.table(table(sys.sample$Region))
+s.uneq.prop.t = prop.table(table(s.uneq.sample$Region))
+s.srswor.prop.t = prop.table(table(s.srswor.sample$Region))
+
+#X and Y for each sampling
+y.pop = as.numeric(pop.prop.t)
+x.pop = rownames(pop.prop.t)
+
+y.s.srswor = as.numeric(s.srswor.prop.t)
+x.s.srswor = rownames(s.srswor.prop.t)
+
+y.s.sys = as.numeric(s.sys.prop.t)
+x.s.sys = rownames(s.sys.prop.t)
+
+y.s.uneq = as.numeric(s.uneq.prop.t)
+x.s.uneq = rownames(s.uneq.prop.t)
+#Plot
+fig = plotly()
+fig.1 <- plot_ly(x = x.pop, y= y.pop, type = "bar", color = I("#3E4A89FF"), opacity = .75, name = "Population" )%>% layout(orientation='vertical')#%>% layout(xaxis = list(categoryorder = "total descending"), yaxis = list(range(0,0.4)))
+
+fig.2 <- plot_ly(x = x.s.srswor, y= y.s.srswor, type = "bar", color = I("#26828EFF"), opacity = .75, name = "SRSWOR" )#%>% layout(xaxis = list(categoryorder = "total descending"), yaxis = list(range(0,0.4)))
+
+fig.3 <- plot_ly(x = x.s.sys, y= y.s.sys, type = "bar", color = I("#35B779FF"), opacity = .75, name = "Systematic" )#%>% layout(xaxis = list(categoryorder = "total descending"), yaxis = list(range(0,0.4)))
+
+fig.4 <- plot_ly(x = x.s.uneq, y= y.s.uneq, type = "bar", color = I("#B4DE2CFF"), opacity = .75, name = "Unequal Opportunities" )#%>% layout(xaxis = list(categoryorder = "total descending"), yaxis = list(range(0,0.4)))
+
+fig <- subplot(fig.1, fig.2, fig.3, fig.4, nrows = 2, margin = 0.10) #%>% layout(title = "Sampling Methods", yaxis = list(range(0,0.4)))
+
+regions.countries_count = happy %>% group_by(Region) %>% dplyr::summarise (count_countries = mean(count_countries)) %>% arrange(.,desc(count_countries))
+regions.countries_count 
+fig
+```
+
+Findings: 
+
+- As we can see from the sorted regions country count and the sampling graphs, Systematic sampling gave more representative way to deal with only a subset of the data as all regions are present with same probabilities they have on the original population.
+
+- Unequal Opportunities systematic sampling gave regions with higher number of countries more opportunity to appear in the sample, and that is why we don't see East Asia in the sample. 
+
+- In Simple Random Sampling Without Replacement we see most regions have a 10-15% probability to appear in the sample.
+
+# Conclusion
+Throughout this project, we were able to analyze countries’ happiness levels and the potential factors that influence happiness.
+
+Specifically, we examined the regions included in our dataset and how ladder score evolved for each region over the fifteen year time period. Next, we analyzed the potential factors that could predict a country's ladder score. Once we gained an understanding of the ladder score by region and the predictors of ladder score, we asked specific questions to find the top countries in our dataset. Lastly, we sought to understand how sampling would affect the distribution of our dataset. To do so, we tested the central limit theorem and various sampling methods. 
+
+In our analyse of the world happiness report, we understood the importance of recognizing a country's happiness level and the factors that improve happiness. Such knowledge of happiness indicators can be utilized to inform a country's policy-making decisions and effectively progress the well-being of a nation.
