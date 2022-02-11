@@ -1,5 +1,5 @@
 # World Happiness Report
 
-View code on: https://rpubs.com/vineetver/864822
+View code on [Rpub](https://rpubs.com/vineetver/864822)
 
 
