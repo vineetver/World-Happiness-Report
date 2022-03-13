@@ -4,7 +4,7 @@ The world happiness report dataset was developed from the Gallup World Poll in w
 
 The dataset can be found on: https://www.kaggle.com/ajaypalsinghlo/world-happiness-report-2021
 
-By [Vineet Verma](www.goodbyeweekend.io), Melissa Viator <mviator@bu.edu>, Mohammed Alshaalan <m.a.sh3lan@gmail.com>
+By [Vineet Verma](https://www.goodbyeweekend.io/about), Melissa Viator <mviator@bu.edu>, Mohammed Alshaalan <m.a.sh3lan@gmail.com>
 
 View code on [Rpub](https://rpubs.com/vineetver/864822)
 
