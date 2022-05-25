@@ -30,7 +30,7 @@ The world happiness report dataset was developed from the Gallup World Poll in w
 
 The dataset can be found on: https://www.kaggle.com/ajaypalsinghlo/world-happiness-report-2021
 
-## Dependancies
+## Dependencies
 
 List of all the libraries you need to run the code.
 
