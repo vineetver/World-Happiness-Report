@@ -1,6 +1,5 @@
 ---
 title: "Analysis of World Happiness"
-subtitle: "CS 544 Term Project"
 author: "Mohammed Alshaalan, Vineet Verma, Melissa Viator"
 date: "December 7, 2021"
 navbar:
