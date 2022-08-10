@@ -44,7 +44,6 @@ library(kernlab)
 library(pracma)
 library(knitr)
 library(sampling)
-library(prob)
 
 wd <- getwd()
 setwd(wd)
