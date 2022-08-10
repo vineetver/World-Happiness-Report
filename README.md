@@ -7,6 +7,8 @@ The World Happiness Report reveals a bright light in the darkness of the COVID-1
 
 We mapped the data of every country, then set about in an attempt to extract meaning and stories from the data. The analysis presented in our report offer a hopeful and encouraging message for policy-makers.
 
+Note: Follow the link to read the report ![report](https://rpubs.com/vineetver/931395)
+
 Ladder score is a measure of happiness on a scale of 0 to 10.
 
 Specifically, we wish to answer the following questions:
